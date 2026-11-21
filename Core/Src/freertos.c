@@ -25,7 +25,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "adc.h"
+#include <stdint.h>
+#include "OLED.h"
+#include "Joystick.h"
+#include "filter.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,14 +49,22 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-
+Kalman1D_t Kalman1D_X,Kalman1D_Y;
+extern Joystick_ADC_t joystick;
 /* USER CODE END Variables */
-/* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
+/* Definitions for Joystick_Task */
+osThreadId_t Joystick_TaskHandle;
+const osThreadAttr_t Joystick_Task_attributes = {
+  .name = "Joystick_Task",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for OLED_Task */
+osThreadId_t OLED_TaskHandle;
+const osThreadAttr_t OLED_Task_attributes = {
+  .name = "OLED_Task",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,7 +72,8 @@ const osThreadAttr_t defaultTask_attributes = {
 
 /* USER CODE END FunctionPrototypes */
 
-void StartDefaultTask(void *argument);
+void Joystick(void *argument);
+void OLED(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -91,8 +104,11 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  /* creation of Joystick_Task */
+  Joystick_TaskHandle = osThreadNew(Joystick, NULL, &Joystick_Task_attributes);
+
+  /* creation of OLED_Task */
+  OLED_TaskHandle = osThreadNew(OLED, NULL, &OLED_Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -104,22 +120,43 @@ void MX_FREERTOS_Init(void) {
 
 }
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN Header_Joystick */
 /**
-  * @brief  Function implementing the defaultTask thread.
+  * @brief  Function implementing the Joystick_Task thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+/* USER CODE END Header_Joystick */
+void Joystick(void *argument)
 {
-  /* USER CODE BEGIN StartDefaultTask */
+  /* USER CODE BEGIN Joystick */
+  Kalman1D_Init(&Kalman1D_X, 0, 0, 0);
+  Kalman1D_Init(&Kalman1D_Y, 0, 0, 0);
+  /* Infinite loop */
+  for(;;)
+  {
+    JOYSTICK_Read(&joystick);
+    osDelay(1);
+  }
+  /* USER CODE END Joystick */
+}
+
+/* USER CODE BEGIN Header_OLED */
+/**
+* @brief Function implementing the OLED_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_OLED */
+void OLED(void *argument)
+{
+  /* USER CODE BEGIN OLED */
   /* Infinite loop */
   for(;;)
   {
     osDelay(1);
   }
-  /* USER CODE END StartDefaultTask */
+  /* USER CODE END OLED */
 }
 
 /* Private application code --------------------------------------------------*/
