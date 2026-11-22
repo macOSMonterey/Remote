@@ -30,6 +30,8 @@
 #include "OLED.h"
 #include "Joystick.h"
 #include "filter.h"
+#include "referee_usart_task.h"
+#include "Serial.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,7 +52,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-Kalman1D_t Kalman1D_X,Kalman1D_Y,Kalman1Dvol_x,Kalman1Dvol_y;
+Move_t move;
+Kalman1D_t Kalman1D_ADC_X,Kalman1D_ADC_Y,Kalman1Dvol_x,Kalman1Dvol_y,Kalman1D_X,Kalman1D_Y;
 extern Joystick_ADC_t joystick;
 /* USER CODE END Variables */
 /* Definitions for Joystick_Task */
@@ -81,6 +84,13 @@ const osThreadAttr_t Key_Task_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for referee_task */
+osThreadId_t referee_taskHandle;
+const osThreadAttr_t referee_task_attributes = {
+  .name = "referee_task",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for Joy_Mutex */
 osMutexId_t Joy_MutexHandle;
 const osMutexAttr_t Joy_Mutex_attributes = {
@@ -101,6 +111,7 @@ void Joystick(void *argument);
 void OLED(void *argument);
 void SerialData(void *argument);
 void Key(void *argument);
+extern void referee_usart_task(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -150,6 +161,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of Key_Task */
   Key_TaskHandle = osThreadNew(Key, NULL, &Key_Task_attributes);
 
+  /* creation of referee_task */
+  referee_taskHandle = osThreadNew(referee_usart_task, NULL, &referee_task_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -170,10 +184,13 @@ void MX_FREERTOS_Init(void) {
 void Joystick(void *argument)
 {
   /* USER CODE BEGIN Joystick */
-  Kalman1D_Init(&Kalman1D_X, 0.2, 2.0, 2048);
-  Kalman1D_Init(&Kalman1D_Y, 0.2, 2.0, 2048);
+  JOYSTICK_Init(&joystick);
+  Kalman1D_Init(&Kalman1D_ADC_X, 0.2, 2.0, 2048);
+  Kalman1D_Init(&Kalman1D_ADC_Y, 0.2, 2.0, 2048);
   Kalman1D_Init(&Kalman1Dvol_x, 0.2, 2.0, 2.5);
   Kalman1D_Init(&Kalman1Dvol_y, 0.2, 2.0, 2.5);
+  Kalman1D_Init(&Kalman1D_X, 0.2, 2.0, 0);
+  Kalman1D_Init(&Kalman1D_Y, 0.2, 2.0, 0);
   
   uint32_t tick = osKernelGetTickCount();
   uint32_t T_ms = 10;
@@ -183,10 +200,12 @@ void Joystick(void *argument)
     osMutexAcquire(Joy_MutexHandle, osWaitForever);
     tick = osKernelGetTickCount();
     JOYSTICK_Read(&joystick);
-    joystick.filteredData.adc_x=kalman_filter(&Kalman1D_X, joystick.Data.adc_x);
-    joystick.filteredData.adc_y=kalman_filter(&Kalman1D_Y, joystick.Data.adc_y);
+    joystick.filteredData.adc_x=kalman_filter(&Kalman1D_ADC_X, joystick.Data.adc_x);
+    joystick.filteredData.adc_y=kalman_filter(&Kalman1D_ADC_Y, joystick.Data.adc_y);
     joystick.filteredData.vol_x=kalman_filter(&Kalman1Dvol_x, joystick.Data.vol_x);
     joystick.filteredData.vol_y=kalman_filter(&Kalman1Dvol_y, joystick.Data.vol_y);
+    joystick.filteredData.x=kalman_filter(&Kalman1D_X, joystick.Data.x);
+    joystick.filteredData.y=kalman_filter(&Kalman1D_Y, joystick.Data.y);
     osMutexRelease(Joy_MutexHandle);
     tick += pdMS_TO_TICKS(T_ms);
     osDelayUntil(tick);
@@ -205,10 +224,15 @@ void OLED(void *argument)
 {
   /* USER CODE BEGIN OLED */
   OLED_Init();
+  OLED_ShowString(1, 1, "Vx:");
+  OLED_ShowString(2, 1, "Vy:");
+  OLED_ShowString(3, 1, "Wz:");
   /* Infinite loop */
   for(;;)
   {
-    OLED_ShowNum(1, 1, 2, 2);
+    OLED_ShowFloat(1, 4, move.Vx, 2, 2);
+    OLED_ShowFloat(2, 4, move.Vy, 2, 2);
+    //OLED_ShowNum(1, 1, 2, 2);
     osDelay(10);
   }
   /* USER CODE END OLED */
@@ -227,7 +251,10 @@ void SerialData(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    move.Vx=joystick.filteredData.x*40.0f;
+    move.Vy=joystick.filteredData.y*40.0f;
+    CustomController_StructSend(&move);
+    osDelay(10);
   }
   /* USER CODE END SerialData */
 }
