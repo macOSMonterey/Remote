@@ -39,7 +39,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define KEY_Pin       GPIO_PIN_0
+#define KEY_GPIO_Port GPIOB
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,7 +50,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-Kalman1D_t Kalman1D_X,Kalman1D_Y;
+Kalman1D_t Kalman1D_X,Kalman1D_Y,Kalman1Dvol_x,Kalman1Dvol_y;
 extern Joystick_ADC_t joystick;
 /* USER CODE END Variables */
 /* Definitions for Joystick_Task */
@@ -66,6 +67,30 @@ const osThreadAttr_t OLED_Task_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for SerialData_Tsk */
+osThreadId_t SerialData_TskHandle;
+const osThreadAttr_t SerialData_Tsk_attributes = {
+  .name = "SerialData_Tsk",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for Key_Task */
+osThreadId_t Key_TaskHandle;
+const osThreadAttr_t Key_Task_attributes = {
+  .name = "Key_Task",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for Joy_Mutex */
+osMutexId_t Joy_MutexHandle;
+const osMutexAttr_t Joy_Mutex_attributes = {
+  .name = "Joy_Mutex"
+};
+/* Definitions for sem_KeyPressed */
+osSemaphoreId_t sem_KeyPressedHandle;
+const osSemaphoreAttr_t sem_KeyPressed_attributes = {
+  .name = "sem_KeyPressed"
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -74,6 +99,8 @@ const osThreadAttr_t OLED_Task_attributes = {
 
 void Joystick(void *argument);
 void OLED(void *argument);
+void SerialData(void *argument);
+void Key(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -86,10 +113,17 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
+  /* Create the mutex(es) */
+  /* creation of Joy_Mutex */
+  Joy_MutexHandle = osMutexNew(&Joy_Mutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
+
+  /* Create the semaphores(s) */
+  /* creation of sem_KeyPressed */
+  sem_KeyPressedHandle = osSemaphoreNew(1, 0, &sem_KeyPressed_attributes);
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
@@ -109,6 +143,12 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of OLED_Task */
   OLED_TaskHandle = osThreadNew(OLED, NULL, &OLED_Task_attributes);
+
+  /* creation of SerialData_Tsk */
+  SerialData_TskHandle = osThreadNew(SerialData, NULL, &SerialData_Tsk_attributes);
+
+  /* creation of Key_Task */
+  Key_TaskHandle = osThreadNew(Key, NULL, &Key_Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -130,13 +170,26 @@ void MX_FREERTOS_Init(void) {
 void Joystick(void *argument)
 {
   /* USER CODE BEGIN Joystick */
-  Kalman1D_Init(&Kalman1D_X, 0, 0, 0);
-  Kalman1D_Init(&Kalman1D_Y, 0, 0, 0);
+  Kalman1D_Init(&Kalman1D_X, 0.2, 2.0, 2048);
+  Kalman1D_Init(&Kalman1D_Y, 0.2, 2.0, 2048);
+  Kalman1D_Init(&Kalman1Dvol_x, 0.2, 2.0, 2.5);
+  Kalman1D_Init(&Kalman1Dvol_y, 0.2, 2.0, 2.5);
+  
+  uint32_t tick = osKernelGetTickCount();
+  uint32_t T_ms = 10;
   /* Infinite loop */
   for(;;)
   {
+    osMutexAcquire(Joy_MutexHandle, osWaitForever);
+    tick = osKernelGetTickCount();
     JOYSTICK_Read(&joystick);
-    osDelay(1);
+    joystick.filteredData.adc_x=kalman_filter(&Kalman1D_X, joystick.Data.adc_x);
+    joystick.filteredData.adc_y=kalman_filter(&Kalman1D_Y, joystick.Data.adc_y);
+    joystick.filteredData.vol_x=kalman_filter(&Kalman1Dvol_x, joystick.Data.vol_x);
+    joystick.filteredData.vol_y=kalman_filter(&Kalman1Dvol_y, joystick.Data.vol_y);
+    osMutexRelease(Joy_MutexHandle);
+    tick += pdMS_TO_TICKS(T_ms);
+    osDelayUntil(tick);
   }
   /* USER CODE END Joystick */
 }
@@ -151,16 +204,83 @@ void Joystick(void *argument)
 void OLED(void *argument)
 {
   /* USER CODE BEGIN OLED */
+  OLED_Init();
+  /* Infinite loop */
+  for(;;)
+  {
+    OLED_ShowNum(1, 1, 2, 2);
+    osDelay(10);
+  }
+  /* USER CODE END OLED */
+}
+
+/* USER CODE BEGIN Header_SerialData */
+/**
+* @brief Function implementing the SerialData_Tsk thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_SerialData */
+void SerialData(void *argument)
+{
+  /* USER CODE BEGIN SerialData */
   /* Infinite loop */
   for(;;)
   {
     osDelay(1);
   }
-  /* USER CODE END OLED */
+  /* USER CODE END SerialData */
+}
+
+/* USER CODE BEGIN Header_Key */
+/**
+* @brief Function implementing the Key_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_Key */
+void Key(void *argument)
+{
+  /* USER CODE BEGIN Key */
+  uint32_t press_time = 0;
+  /* Infinite loop */
+  for(;;)
+  {// 1. 没按键时，死等在这里睡觉（0% CPU占用）
+    if (osSemaphoreAcquire(sem_KeyPressedHandle, osWaitForever) == osOK) {
+      osDelay(20);
+      if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) != GPIO_PIN_RESET) {
+          continue; 
+      }
+      press_time = osKernelGetTickCount(); // 记录按下的时间
+      // 2. 判断按住的时间（这是一个简单的循环，不复杂）
+      while (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET) {
+        if ((osKernelGetTickCount() - press_time) >= 2000) {
+          osMutexAcquire(Joy_MutexHandle, osWaitForever);
+          if(JOYSTICK_Calib(&joystick,500)!=HAL_OK)HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+          osSemaphoreAcquire(sem_KeyPressedHandle, 0);
+          osMutexRelease(Joy_MutexHandle);
+          break;
+        }
+        osDelay(10);
+      }
+    }
+  }
+  /* USER CODE END Key */
 }
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) 
+{
+  // 1. 识别是不是我们的按键引脚（PE4）
+  if (GPIO_Pin == KEY_Pin) {
+    // 2. （可选防抖）再读一次电平，确认是真的按下了，而不是毛刺
+    if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET) {
+      // 3. 释放信号量，通知任务
+      // 注意：在中断中调用，不要用带阻塞的API，osSemaphoreRelease是安全的
+      osSemaphoreRelease(sem_KeyPressedHandle);
+    }
+  }
+}
 /* USER CODE END Application */
 

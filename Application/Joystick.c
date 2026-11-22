@@ -1,3 +1,4 @@
+#include "cmsis_os2.h"
 #include "stm32f1xx_hal.h"
 #include "Joystick.h"
 #include "adc.h"
@@ -39,7 +40,7 @@ void JOYSTICK_Read(Joystick_ADC_t *joy)
     HAL_ADC_Stop(&hadc1);
 	
 	joy->Data.adc_x=joy->RawData.adc_x+joy->Data.offset_x;
-	joy->Data.adc_y=joy->RawData.adc_x+joy->Data.offset_y;
+	joy->Data.adc_y=joy->RawData.adc_y+joy->Data.offset_y;
     // 电压换算 3.3V参考
     joy->Data.vol_x = joy->Data.adc_x * 5.0f / 4095.0f;
     joy->Data.vol_y = joy->Data.adc_y * 5.0f / 4095.0f;
@@ -49,15 +50,20 @@ void JOYSTICK_Read(Joystick_ADC_t *joy)
     joy->Data.y = (int16_t)joy->Data.adc_y - 2048;
 }
 
-void JOYSTICK_Calib(Joystick_ADC_t *joy)
+HAL_StatusTypeDef JOYSTICK_Calib(Joystick_ADC_t *joy,uint16_t samples)
 {
-    uint32_t sum_x = 0, sum_y = 0;
-    for(uint8_t i = 0; i < 10; i++)
+    int32_t sum_x = 0, sum_y = 0;
+    HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
+    for(uint16_t i = 0; i < samples; i++)
     {
+        if(i%10==0)HAL_GPIO_TogglePin(GPIOC,GPIO_PIN_13);
         JOYSTICK_Read(joy);
-        sum_x += joy->RawData.adc_x;
-        sum_y += joy->RawData.adc_y;
+        sum_x += 2048-(int32_t)(joy->RawData.adc_x);
+        sum_y += 2048-(int32_t)(joy->RawData.adc_y);
+        osDelay(10);
     }
-    joy->Data.offset_x = sum_x / 10;
-    joy->Data.offset_y = sum_y / 10;
+    HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
+    joy->Data.offset_x = sum_x / samples;
+    joy->Data.offset_y = sum_y / samples;
+    return HAL_OK;
 }
