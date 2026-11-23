@@ -8,7 +8,7 @@ typedef struct __packed
 {
     float Vx;       
     float Vy;     
-    float Wz;      
+    float Yaw;      
 } Move_t;     
 
 /**

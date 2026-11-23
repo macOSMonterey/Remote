@@ -17,7 +17,7 @@ void JOYSTICK_Init(Joystick_ADC_t *joy)
     joy->Data.mid_x=joy->Data.mid_y=2048;
 }
 
-void joy_map(Joystick_ADC_t *joy)
+void joy_mapadc(Joystick_ADC_t *joy)
 {
     int32_t tmp;
     // X轴
@@ -41,6 +41,38 @@ void joy_map(Joystick_ADC_t *joy)
         tmp = 2048LL + 2048LL * (joy->RawData.adc_y - joy->Data.mid_y) / (4095U - joy->Data.mid_y);
     }
     joy->Data.adc_y = adc_clamp(tmp);
+}
+
+void joy_mapx(Joystick_ADC_t *joy,float Delta)
+{
+    if(joy->Data.adc_x-2048>=Delta)
+    {
+        joy->Data.x=(joy->Data.adc_x-Delta-2048.0f)/(2048.0f-Delta);
+    }
+    else if(joy->Data.adc_x-2048<=-Delta)
+    {
+        joy->Data.x=(joy->Data.adc_x+Delta-2048.0f)/(2048.0f-Delta);
+    }
+    else 
+    {
+        joy->Data.x=0;
+    }
+}
+
+void joy_mapy(Joystick_ADC_t *joy,float Delta)
+{
+    if(joy->Data.adc_y-2048>=Delta)
+    {
+        joy->Data.y=(joy->Data.adc_y-Delta-2048.0f)/(2048.0f-Delta);
+    }
+    else if(joy->Data.adc_y-2048<=-Delta)
+    {
+        joy->Data.y=(joy->Data.adc_y+Delta-2048.0f)/(2048.0f-Delta);
+    }
+    else 
+    {
+        joy->Data.y=0;
+    }
 }
 
 void JOYSTICK_Read(Joystick_ADC_t *joy)
@@ -77,14 +109,14 @@ void JOYSTICK_Read(Joystick_ADC_t *joy)
     }
     HAL_ADC_Stop(&hadc1);
 	
-    joy_map(joy);
+    joy_mapadc(joy);
     // 电压换算 3.3V参考
     joy->Data.vol_x = joy->Data.adc_x * 5.0f / 4095.0f;
     joy->Data.vol_y = joy->Data.adc_y * 5.0f / 4095.0f;
 
     // 归一化，中位2048
-    joy->Data.x = ((int16_t)joy->Data.adc_x - 2048)/2048.0f;
-    joy->Data.y = ((int16_t)joy->Data.adc_y - 2048)/2048.0f;
+    joy_mapx(joy,100.0f);
+    joy_mapy(joy,100.0f);
 }
 
 HAL_StatusTypeDef JOYSTICK_Calib(Joystick_ADC_t *joy,uint16_t samples)

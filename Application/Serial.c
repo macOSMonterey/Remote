@@ -19,7 +19,7 @@ void CustomController_StructSend(Move_t *data)
     //计算并添加CRC8校验码
     Append_CRC8_Check_Sum(txFrame.data, sizeof(xFrameHeader));
     //设置数据帧头
-    CustomController.CmdID = 0x0311;  // 数据帧ID
+    CustomController.CmdID = 0x01;  // 数据帧ID
     //将映射数据复制到数据帧中
     CustomController.move = *data;
     //将数据帧的其余部分复制到发送帧数据中

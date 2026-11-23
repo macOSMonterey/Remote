@@ -32,6 +32,7 @@
 #include "filter.h"
 #include "referee_usart_task.h"
 #include "Serial.h"
+#include "encoder.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,6 +56,7 @@
 Move_t move;
 Kalman1D_t Kalman1D_ADC_X,Kalman1D_ADC_Y,Kalman1Dvol_x,Kalman1Dvol_y,Kalman1D_X,Kalman1D_Y;
 extern Joystick_ADC_t joystick;
+extern Encoder_t encoder;
 /* USER CODE END Variables */
 /* Definitions for Joystick_Task */
 osThreadId_t Joystick_TaskHandle;
@@ -91,6 +93,13 @@ const osThreadAttr_t referee_task_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for ENCODER_Task */
+osThreadId_t ENCODER_TaskHandle;
+const osThreadAttr_t ENCODER_Task_attributes = {
+  .name = "ENCODER_Task",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for Joy_Mutex */
 osMutexId_t Joy_MutexHandle;
 const osMutexAttr_t Joy_Mutex_attributes = {
@@ -112,6 +121,7 @@ void OLED(void *argument);
 void SerialData(void *argument);
 void Key(void *argument);
 extern void referee_usart_task(void *argument);
+void ENCODER(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -163,6 +173,9 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of referee_task */
   referee_taskHandle = osThreadNew(referee_usart_task, NULL, &referee_task_attributes);
+
+  /* creation of ENCODER_Task */
+  ENCODER_TaskHandle = osThreadNew(ENCODER, NULL, &ENCODER_Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -226,13 +239,13 @@ void OLED(void *argument)
   OLED_Init();
   OLED_ShowString(1, 1, "Vx:");
   OLED_ShowString(2, 1, "Vy:");
-  OLED_ShowString(3, 1, "Wz:");
+  OLED_ShowString(3, 1, "Yaw:");
   /* Infinite loop */
   for(;;)
   {
     OLED_ShowFloat(1, 4, move.Vx, 2, 2);
     OLED_ShowFloat(2, 4, move.Vy, 2, 2);
-    //OLED_ShowNum(1, 1, 2, 2);
+    OLED_ShowFloat(3, 5, move.Yaw, 2, 2);
     osDelay(10);
   }
   /* USER CODE END OLED */
@@ -253,6 +266,7 @@ void SerialData(void *argument)
   {
     move.Vx=joystick.filteredData.x*40.0f;
     move.Vy=joystick.filteredData.y*40.0f;
+    move.Yaw=encoder.angle;
     CustomController_StructSend(&move);
     osDelay(10);
   }
@@ -293,6 +307,27 @@ void Key(void *argument)
     }
   }
   /* USER CODE END Key */
+}
+
+/* USER CODE BEGIN Header_ENCODER */
+/**
+* @brief Function implementing the ENCODER_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_ENCODER */
+void ENCODER(void *argument)
+{
+  /* USER CODE BEGIN ENCODER */
+  Encoder_Init(&encoder);
+  /* Infinite loop */
+  for(;;)
+  {
+    Encoder_Get(&encoder);
+    Encoder_to_Angle(&encoder);
+    osDelay(10);
+  }
+  /* USER CODE END ENCODER */
 }
 
 /* Private application code --------------------------------------------------*/
