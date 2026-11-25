@@ -1,9 +1,11 @@
 #include "usart.h"
 #include "Serial.h"
 #include "crc.h"
+#include "Bluetooth.h"
 
 JudgeTxFrame            txFrame;
 customController_t      CustomController;
+extern HC05_HandleTypeDef HC_05;
 
 void CustomController_StructSend(Move_t *data)
 {
@@ -33,5 +35,6 @@ void CustomController_StructSend(Move_t *data)
     // 初始化发送缓冲区
     memset(txFrame.data + txFrame.frameLength, 0, JUDGE_MAX_TX_LENGTH - txFrame.frameLength);
     // 发送数据
+    if(BlueTooth_R_STATE(&HC_05)==0)
     HAL_UART_Transmit(&huart1, txFrame.data, txFrame.frameLength,100);
 }

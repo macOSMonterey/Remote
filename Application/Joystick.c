@@ -122,7 +122,7 @@ void JOYSTICK_Read(Joystick_ADC_t *joy)
 HAL_StatusTypeDef JOYSTICK_Calib(Joystick_ADC_t *joy,uint16_t samples)
 {
     int32_t sum_x = 0, sum_y = 0;
-    HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_SET);
     for(uint16_t i = 0; i < samples; i++)
     {
         if(i%10==0)HAL_GPIO_TogglePin(GPIOC,GPIO_PIN_13);
@@ -131,7 +131,7 @@ HAL_StatusTypeDef JOYSTICK_Calib(Joystick_ADC_t *joy,uint16_t samples)
         sum_y += (int32_t)(joy->RawData.adc_y);
         osDelay(10);
     }
-    HAL_GPIO_WritePin(GPIOA,GPIO_PIN_6,GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_SET);
     joy->Data.mid_x = sum_x / samples;
     joy->Data.mid_y = sum_y / samples;
     return HAL_OK;

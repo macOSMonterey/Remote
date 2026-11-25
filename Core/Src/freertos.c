@@ -33,6 +33,7 @@
 #include "referee_usart_task.h"
 #include "Serial.h"
 #include "encoder.h"
+#include "Bluetooth.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -100,6 +101,13 @@ const osThreadAttr_t ENCODER_Task_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for BLUETOOTH_Task */
+osThreadId_t BLUETOOTH_TaskHandle;
+const osThreadAttr_t BLUETOOTH_Task_attributes = {
+  .name = "BLUETOOTH_Task",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for Joy_Mutex */
 osMutexId_t Joy_MutexHandle;
 const osMutexAttr_t Joy_Mutex_attributes = {
@@ -122,6 +130,7 @@ void SerialData(void *argument);
 void Key(void *argument);
 extern void referee_usart_task(void *argument);
 void ENCODER(void *argument);
+extern void bluetooth_usart_task(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -176,6 +185,9 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of ENCODER_Task */
   ENCODER_TaskHandle = osThreadNew(ENCODER, NULL, &ENCODER_Task_attributes);
+
+  /* creation of BLUETOOTH_Task */
+  BLUETOOTH_TaskHandle = osThreadNew(bluetooth_usart_task, NULL, &BLUETOOTH_Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */

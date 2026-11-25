@@ -37,6 +37,8 @@
 #include "usart.h"
 #include <stdint.h>
 
+#include "Bluetooth.h"
+
 /**
   * @brief          single byte upacked 
   * @param[in]      void
@@ -56,6 +58,9 @@ uint8_t usart1_buf[2][USART_RX_BUF_LENGHT];		//// DMA双接收缓冲区，避免
 fifo_s_t referee_fifo;
 uint8_t referee_fifo_buf[REFEREE_FIFO_BUF_LENGTH];
 unpack_data_t referee_unpack_obj;
+
+extern fifo_s_t bluetooth_fifo;
+extern HC05_HandleTypeDef HC_05;
 
 /**
   * @brief          referee task
@@ -90,7 +95,6 @@ void referee_usart_task(void *argument)
         osDelay(10); 
     }
 }
-
 
 /**
   * @brief          single byte upacked 
@@ -215,7 +219,14 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     if (huart->Instance == USART1)
     {
         // usart1_dma_rx_idx 是刚才DMA接收填满的那块
-        fifo_s_puts(&referee_fifo, (char*)usart1_buf[usart1_dma_rx_idx], Size);
+        if(BlueTooth_R_STATE(&HC_05))
+        {
+          fifo_s_puts(&bluetooth_fifo, (char*)usart1_buf[usart1_dma_rx_idx], Size);
+        }
+        else
+        {
+          fifo_s_puts(&referee_fifo, (char*)usart1_buf[usart1_dma_rx_idx], Size);
+        }
         detect_hook(REFEREE_TOE);
 
         // 切换到另外一块buf，重启DMA接收
