@@ -62,6 +62,8 @@ Kalman1D_t Kalman1D_ADC_X,Kalman1D_ADC_Y,Kalman1Dvol_x,Kalman1Dvol_y,Kalman1D_X,
 extern Joystick_ADC_t joystick;
 extern Encoder_t encoder;
 extern HC05_HandleTypeDef HC_05;
+static volatile uint32_t idle_tick = 0;
+TickType_t ulLastIdleTick = 0;
 /* USER CODE END Variables */
 /* Definitions for Joystick_Task */
 osThreadId_t Joystick_TaskHandle;
@@ -105,6 +107,13 @@ const osThreadAttr_t ENCODER_Task_attributes = {
   .stack_size = 64 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+/* Definitions for cpu_monitor_tas */
+osThreadId_t cpu_monitor_tasHandle;
+const osThreadAttr_t cpu_monitor_tas_attributes = {
+  .name = "cpu_monitor_tas",
+  .stack_size = 64 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for Joy_Mutex */
 osMutexId_t Joy_MutexHandle;
 const osMutexAttr_t Joy_Mutex_attributes = {
@@ -132,11 +141,34 @@ void SerialData(void *argument);
 void Key(void *argument);
 extern void referee_usart_task(void *argument);
 void ENCODER(void *argument);
+void cpu_monitor(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /* Hook prototypes */
+void vApplicationIdleHook(void);
 void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
+
+/* USER CODE BEGIN 2 */
+void vApplicationIdleHook( void )
+{
+  TickType_t ulCurrentTick = xTaskGetTickCount();
+  if(ulCurrentTick > ulLastIdleTick)
+  {
+      idle_tick++;
+      ulLastIdleTick = ulCurrentTick;
+  }
+   /* vApplicationIdleHook() will only be called if configUSE_IDLE_HOOK is set
+   to 1 in FreeRTOSConfig.h. It will be called on each iteration of the idle
+   task. It is essential that code added to this hook function never attempts
+   to block in any way (for example, call xQueueReceive() with a block time
+   specified, or call vTaskDelay()). If the application makes use of the
+   vTaskDelete() API function (as this demo application does) then it is also
+   important that vApplicationIdleHook() is permitted to return to its calling
+   function, because it is the responsibility of the idle task to clean up
+   memory allocated by the kernel to any task that has since been deleted. */
+}
+/* USER CODE END 2 */
 
 /* USER CODE BEGIN 4 */
 void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName)
@@ -202,6 +234,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of ENCODER_Task */
   ENCODER_TaskHandle = osThreadNew(ENCODER, NULL, &ENCODER_Task_attributes);
 
+  /* creation of cpu_monitor_tas */
+  cpu_monitor_tasHandle = osThreadNew(cpu_monitor, NULL, &cpu_monitor_tas_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -231,7 +266,7 @@ void Joystick(void *argument)
   Kalman1D_Init(&Kalman1D_Y, 0.2, 2.0, 0);
   
   uint32_t tick = osKernelGetTickCount();
-  uint32_t T_ms = 10;
+  uint32_t T_ms = 20;
   /* Infinite loop */
   for(;;)
   {
@@ -296,7 +331,7 @@ void SerialData(void *argument)
     osMutexAcquire(HC05_MutexHandle, osWaitForever);
     CustomController_StructSend(&move);
     osMutexRelease(HC05_MutexHandle);
-    osDelay(10);
+    osDelay(50);
   }
   /* USER CODE END SerialData */
 }
@@ -381,9 +416,32 @@ void ENCODER(void *argument)
   {
     Encoder_Get(&encoder);
     Encoder_to_Angle(&encoder);
-    osDelay(10);
+    osDelay(20);
   }
   /* USER CODE END ENCODER */
+}
+
+/* USER CODE BEGIN Header_cpu_monitor */
+/**
+* @brief Function implementing the cpu_monitor_tas thread.
+* @param argument: Not used
+* @retval None
+*/float cpu_usage;
+/* USER CODE END Header_cpu_monitor */
+void cpu_monitor(void *argument)
+{
+  /* USER CODE BEGIN cpu_monitor */
+  uint32_t tick = osKernelGetTickCount();
+  /* Infinite loop */
+  for(;;)
+  {
+    tick += pdMS_TO_TICKS(1000);
+    osDelayUntil(tick);
+    cpu_usage = 100.0f - idle_tick * 100.0f / (float)configTICK_RATE_HZ;
+    idle_tick=0;
+    ulLastIdleTick = xTaskGetTickCount();
+  }
+  /* USER CODE END cpu_monitor */
 }
 
 /* Private application code --------------------------------------------------*/
