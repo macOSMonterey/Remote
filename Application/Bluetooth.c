@@ -201,65 +201,6 @@ LINK_StatusTypeDef HC_05_link(HC05_HandleTypeDef *hc_05)
   return result;
 }
 /*
-void BlueTooth_Task(void *p)
-{	
-	uint8_t i=0;
-	while(1)
-	{
-		if(pRead!=pWrite)
-		{
-			taskENTER_CRITICAL();
-			if(ATState==0)
-			{
-				if(BlueTooth_Buffer[pRead]=='[')
-				{
-					i=0;
-					pRead++;
-					if(pRead>255)pRead=0;
-					while(i<62)
-					{
-						if(pRead==pWrite||BlueTooth_Buffer[pRead]==']')break;
-						BlueTooth_RxPacket[i]=BlueTooth_Buffer[pRead];
-						i++;
-						pRead++;
-						if(pRead>127)pRead=0;
-					}
-					BlueTooth_RxPacket[i]='\0';
-					i=0;
-					xTaskNotifyGive(xHandle_BT_Check);
-				}
-			}
-			else
-			{
-				i=0;
-				while(i<62)
-				{
-					if(pRead==pWrite||BlueTooth_Buffer[pRead]=='\n')break;
-					BlueTooth_RxPacket[i]=BlueTooth_Buffer[pRead];
-					i++;
-					pRead++;
-					if(pRead>127)pRead=0;
-				}
-				BlueTooth_RxPacket[i++]='\n';
-				BlueTooth_RxPacket[i]='\0';
-				i=0;
-				xTaskNotifyGive(xHandle_BT_Check);
-				ATState=0;
-			}
-			if(pRead!=pWrite)
-			{
-				pRead++;
-				if(pRead>127)pRead=0;
-			}
-			taskEXIT_CRITICAL();
-		}
-		else
-		{
-			vTaskDelay(pdMS_TO_TICKS(100));
-		}
-	}
-}
-
 void BT_Check_Task(void *p)
 {
 	double Vx=0,Vy=0,Wz=0,Dz=0;
