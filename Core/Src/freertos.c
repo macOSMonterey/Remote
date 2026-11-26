@@ -95,7 +95,7 @@ const osThreadAttr_t Key_Task_attributes = {
 osThreadId_t referee_taskHandle;
 const osThreadAttr_t referee_task_attributes = {
   .name = "referee_task",
-  .stack_size = 512 * 4,
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal2,
 };
 /* Definitions for ENCODER_Task */

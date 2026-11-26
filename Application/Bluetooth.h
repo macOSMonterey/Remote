@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define FRAME_MAX_SIZE 64
-#define BLUETOOTH_FIFO_BUF_LENGTH 1024
+#define BLUETOOTH_FIFO_BUF_LENGTH 128
 
 // 蓝牙连接状态枚举
 typedef enum
