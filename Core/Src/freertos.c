@@ -303,11 +303,11 @@ void OLED(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    move.Vx=joystick.filteredData.x*40.0f;
-    move.Vy=joystick.filteredData.y*40.0f;
+    move.x=joystick.filteredData.x*200.0f;
+    move.y=joystick.filteredData.y*200.0f;
     move.Yaw=encoder.angle;
-    OLED_ShowFloat(2, 4, move.Vx, 2, 2);
-    OLED_ShowFloat(3, 4, move.Vy, 2, 2);
+    OLED_ShowFloat(2, 4, move.x, 2, 2);
+    OLED_ShowFloat(3, 4, move.y, 2, 2);
     OLED_ShowFloat(4, 5, move.Yaw, 2, 2);
     osDelay(50);
   }

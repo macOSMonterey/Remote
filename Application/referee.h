@@ -7,15 +7,15 @@
 
 typedef struct __attribute__((__packed__)) //0x01
 {
-    float vx;
-    float vy;
+    float x;
+    float y;
     float yaw;
 } REMOTE_t;
 
 typedef struct __attribute__((__packed__)) //0x02
 {
-    float vx;
-    float vy;
+    float x;
+    float y;
     float yaw;
 } FEEDBACK_t;
 

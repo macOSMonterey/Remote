@@ -52,16 +52,16 @@ void referee_data_solve(uint8_t *frame)
     }
 }
 
-void Get_REMOTE(float *vx, float *vy, float *yaw)
+void Get_REMOTE(float *x, float *y, float *yaw)
 {
-    *vx = remote.vx;
-    *vy = remote.vy;
+    *x = remote.x;
+    *y = remote.y;
     *yaw = remote.yaw;
 }
 
-void Get_FEEDBACK(float *vx, float *vy, float *yaw)
+void Get_FEEDBACK(float *x, float *y, float *yaw)
 {
-    *vx = feedback.vx;
-    *vy = feedback.vy;
+    *x = feedback.x;
+    *y = feedback.y;
     *yaw = feedback.yaw;
 }

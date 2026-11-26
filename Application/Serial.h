@@ -6,8 +6,8 @@
 
 typedef struct __packed
 {
-    float Vx;       
-    float Vy;     
+    float x;       
+    float y;     
     float Yaw;      
 } Move_t;     
 
