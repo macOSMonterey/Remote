@@ -43,8 +43,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define KEY_Pin       GPIO_PIN_0
-#define KEY_GPIO_Port GPIOB
+#define MPU6050_KEY_Pin       GPIO_PIN_0
+#define MPU6050_KEY_GPIO_Port GPIOB
+#define HC05_KEY_Pin       GPIO_PIN_5
+#define HC05_KEY_GPIO_Port GPIOA
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,10 +56,12 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+uint8_t key_flag = 0;
 Move_t move;
 Kalman1D_t Kalman1D_ADC_X,Kalman1D_ADC_Y,Kalman1Dvol_x,Kalman1Dvol_y,Kalman1D_X,Kalman1D_Y;
 extern Joystick_ADC_t joystick;
 extern Encoder_t encoder;
+extern HC05_HandleTypeDef HC_05;
 /* USER CODE END Variables */
 /* Definitions for Joystick_Task */
 osThreadId_t Joystick_TaskHandle;
@@ -78,7 +82,7 @@ osThreadId_t SerialData_TskHandle;
 const osThreadAttr_t SerialData_Tsk_attributes = {
   .name = "SerialData_Tsk",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+  .priority = (osPriority_t) osPriorityNormal1,
 };
 /* Definitions for Key_Task */
 osThreadId_t Key_TaskHandle;
@@ -92,26 +96,24 @@ osThreadId_t referee_taskHandle;
 const osThreadAttr_t referee_task_attributes = {
   .name = "referee_task",
   .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+  .priority = (osPriority_t) osPriorityNormal2,
 };
 /* Definitions for ENCODER_Task */
 osThreadId_t ENCODER_TaskHandle;
 const osThreadAttr_t ENCODER_Task_attributes = {
   .name = "ENCODER_Task",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for BLUETOOTH_Task */
-osThreadId_t BLUETOOTH_TaskHandle;
-const osThreadAttr_t BLUETOOTH_Task_attributes = {
-  .name = "BLUETOOTH_Task",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+  .stack_size = 64 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for Joy_Mutex */
 osMutexId_t Joy_MutexHandle;
 const osMutexAttr_t Joy_Mutex_attributes = {
   .name = "Joy_Mutex"
+};
+/* Definitions for HC05_Mutex */
+osMutexId_t HC05_MutexHandle;
+const osMutexAttr_t HC05_Mutex_attributes = {
+  .name = "HC05_Mutex"
 };
 /* Definitions for sem_KeyPressed */
 osSemaphoreId_t sem_KeyPressedHandle;
@@ -130,9 +132,20 @@ void SerialData(void *argument);
 void Key(void *argument);
 extern void referee_usart_task(void *argument);
 void ENCODER(void *argument);
-extern void bluetooth_usart_task(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
+
+/* Hook prototypes */
+void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
+
+/* USER CODE BEGIN 4 */
+void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName)
+{
+   /* Run time stack overflow checking is performed if
+   configCHECK_FOR_STACK_OVERFLOW is defined to 1 or 2. This hook function is
+   called if a stack overflow is detected. */
+}
+/* USER CODE END 4 */
 
 /**
   * @brief  FreeRTOS initialization
@@ -146,6 +159,9 @@ void MX_FREERTOS_Init(void) {
   /* Create the mutex(es) */
   /* creation of Joy_Mutex */
   Joy_MutexHandle = osMutexNew(&Joy_Mutex_attributes);
+
+  /* creation of HC05_Mutex */
+  HC05_MutexHandle = osMutexNew(&HC05_Mutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -185,9 +201,6 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of ENCODER_Task */
   ENCODER_TaskHandle = osThreadNew(ENCODER, NULL, &ENCODER_Task_attributes);
-
-  /* creation of BLUETOOTH_Task */
-  BLUETOOTH_TaskHandle = osThreadNew(bluetooth_usart_task, NULL, &BLUETOOTH_Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -249,16 +262,19 @@ void OLED(void *argument)
 {
   /* USER CODE BEGIN OLED */
   OLED_Init();
-  OLED_ShowString(1, 1, "Vx:");
-  OLED_ShowString(2, 1, "Vy:");
-  OLED_ShowString(3, 1, "Yaw:");
+  OLED_ShowString(2, 1, "Vx:");
+  OLED_ShowString(3, 1, "Vy:");
+  OLED_ShowString(4, 1, "Yaw:");
   /* Infinite loop */
   for(;;)
   {
-    OLED_ShowFloat(1, 4, move.Vx, 2, 2);
-    OLED_ShowFloat(2, 4, move.Vy, 2, 2);
-    OLED_ShowFloat(3, 5, move.Yaw, 2, 2);
-    osDelay(10);
+    move.Vx=joystick.filteredData.x*40.0f;
+    move.Vy=joystick.filteredData.y*40.0f;
+    move.Yaw=encoder.angle;
+    OLED_ShowFloat(2, 4, move.Vx, 2, 2);
+    OLED_ShowFloat(3, 4, move.Vy, 2, 2);
+    OLED_ShowFloat(4, 5, move.Yaw, 2, 2);
+    osDelay(50);
   }
   /* USER CODE END OLED */
 }
@@ -273,13 +289,13 @@ void OLED(void *argument)
 void SerialData(void *argument)
 {
   /* USER CODE BEGIN SerialData */
+  BlueTooth_Init(&HC_05);
   /* Infinite loop */
   for(;;)
   {
-    move.Vx=joystick.filteredData.x*40.0f;
-    move.Vy=joystick.filteredData.y*40.0f;
-    move.Yaw=encoder.angle;
+    osMutexAcquire(HC05_MutexHandle, osWaitForever);
     CustomController_StructSend(&move);
+    osMutexRelease(HC05_MutexHandle);
     osDelay(10);
   }
   /* USER CODE END SerialData */
@@ -299,23 +315,51 @@ void Key(void *argument)
   /* Infinite loop */
   for(;;)
   {// 1. 没按键时，死等在这里睡觉（0% CPU占用）
-    if (osSemaphoreAcquire(sem_KeyPressedHandle, osWaitForever) == osOK) {
+    if (osSemaphoreAcquire(sem_KeyPressedHandle, osWaitForever) == osOK) 
+    {
       osDelay(20);
-      if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) != GPIO_PIN_RESET) {
+      if(key_flag & (1 << 0))
+      {
+        if (HAL_GPIO_ReadPin(MPU6050_KEY_GPIO_Port, MPU6050_KEY_Pin) != GPIO_PIN_RESET) 
+        {
           continue; 
-      }
-      press_time = osKernelGetTickCount(); // 记录按下的时间
-      // 2. 判断按住的时间（这是一个简单的循环，不复杂）
-      while (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET) {
-        if ((osKernelGetTickCount() - press_time) >= 2000) {
-          osMutexAcquire(Joy_MutexHandle, osWaitForever);
-          if(JOYSTICK_Calib(&joystick,500)!=HAL_OK)HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
-          osSemaphoreAcquire(sem_KeyPressedHandle, 0);
-          osMutexRelease(Joy_MutexHandle);
-          break;
         }
-        osDelay(10);
+        press_time = osKernelGetTickCount(); // 记录按下的时间
+        // 2. 判断按住的时间（这是一个简单的循环，不复杂）
+        while (HAL_GPIO_ReadPin(MPU6050_KEY_GPIO_Port, MPU6050_KEY_Pin) == GPIO_PIN_RESET) 
+        {
+          if ((osKernelGetTickCount() - press_time) >= 2000)
+          {
+            osMutexAcquire(Joy_MutexHandle, osWaitForever);
+            if(JOYSTICK_Calib(&joystick,500)!=HAL_OK)HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+            osMutexRelease(Joy_MutexHandle);
+            break;
+          }
+          osDelay(10);
+        }
       }
+      else if (key_flag & (1 << 1))
+      {
+        if (HAL_GPIO_ReadPin(HC05_KEY_GPIO_Port, HC05_KEY_Pin) != GPIO_PIN_RESET) 
+        {
+          continue; 
+        }
+        press_time = osKernelGetTickCount(); // 记录按下的时间
+        // 2. 判断按住的时间（这是一个简单的循环，不复杂）
+        while (HAL_GPIO_ReadPin(HC05_KEY_GPIO_Port, HC05_KEY_Pin) == GPIO_PIN_RESET) 
+        {
+          if ((osKernelGetTickCount() - press_time) >= 2000)
+          {
+            osMutexAcquire(HC05_MutexHandle, osWaitForever);
+            if(HC_05_link(&HC_05)!=HC_05_OK)HAL_GPIO_WritePin(GPIOC,GPIO_PIN_13,GPIO_PIN_RESET);
+            osMutexRelease(HC05_MutexHandle);
+            break;
+          }
+          osDelay(10);
+        }
+      }
+      osSemaphoreAcquire(sem_KeyPressedHandle, 0);
+      key_flag=0;
     }
   }
   /* USER CODE END Key */
@@ -347,11 +391,21 @@ void ENCODER(void *argument)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) 
 {
   // 1. 识别是不是我们的按键引脚（PE4）
-  if (GPIO_Pin == KEY_Pin) {
+  if (GPIO_Pin == MPU6050_KEY_Pin) {
     // 2. （可选防抖）再读一次电平，确认是真的按下了，而不是毛刺
-    if (HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin) == GPIO_PIN_RESET) {
+    if (HAL_GPIO_ReadPin(MPU6050_KEY_GPIO_Port, MPU6050_KEY_Pin) == GPIO_PIN_RESET) {
       // 3. 释放信号量，通知任务
       // 注意：在中断中调用，不要用带阻塞的API，osSemaphoreRelease是安全的
+      key_flag |= (1 << 0);
+      osSemaphoreRelease(sem_KeyPressedHandle);
+    }
+  }
+  else if (GPIO_Pin == HC05_KEY_Pin) {
+    // 2. （可选防抖）再读一次电平，确认是真的按下了，而不是毛刺
+    if (HAL_GPIO_ReadPin(HC05_KEY_GPIO_Port, HC05_KEY_Pin) == GPIO_PIN_RESET) {
+      // 3. 释放信号量，通知任务
+      // 注意：在中断中调用，不要用带阻塞的API，osSemaphoreRelease是安全的
+      key_flag |= (1 << 1);
       osSemaphoreRelease(sem_KeyPressedHandle);
     }
   }

@@ -1,5 +1,6 @@
 #include "cmsis_os2.h"
 #include "stm32f1xx_hal.h"                  // Device header
+#include "stm32f1xx_hal_def.h"
 #include "stm32f1xx_hal_gpio.h"
 #include "string.h"
 #include "FreeRTOS.h"
@@ -15,6 +16,10 @@ hc_05_unpack_data_t hc_05_unpack_obj;
 //uint8_t BlueTooth_RxPacket[FRAME_MAX_SIZE];
 fifo_s_t bluetooth_fifo;
 uint8_t bluetooth_fifo_buf[BLUETOOTH_FIFO_BUF_LENGTH];
+
+hc_05_link_t hc_05_link;
+
+HAL_StatusTypeDef hc_05_unpack_fifo_data(void);
 
 void BlueTooth_Init(HC05_HandleTypeDef *hc_05)
 {
@@ -42,27 +47,25 @@ void BlueTooth_Transmit(HC05_HandleTypeDef *hc_05,uint8_t *string,uint16_t Size)
 	if(BlueTooth_R_STATE(hc_05)==0)HAL_UART_Transmit(hc_05->hw.huart,string,Size,100);
 }
 
-void BlueTooth_Command(HC05_HandleTypeDef *hc_05,uint8_t *string,uint16_t Size,uint8_t time)
+HAL_StatusTypeDef BlueTooth_Command(HC05_HandleTypeDef *hc_05,const char *string,uint8_t time)
 {
-	if(BlueTooth_R_STATE(hc_05))
+	BlueTooth_W_EN(hc_05,1);
+	if(!time)
 	{
 		osDelay(pdMS_TO_TICKS(100));
-		BlueTooth_W_EN(hc_05,1);
-		if(!time)
-		{
-			osDelay(pdMS_TO_TICKS(100));
-			BlueTooth_W_EN(hc_05,0);
-		}
-		osDelay(pdMS_TO_TICKS(100));
-		HAL_UART_Transmit(hc_05->hw.huart,string,Size,100);
-		if(time)
-		{
-			BlueTooth_W_EN(hc_05,0);
-		}
+		BlueTooth_W_EN(hc_05,0);
 	}
+	osDelay(pdMS_TO_TICKS(100));
+	HAL_UART_Transmit(hc_05->hw.huart,(const uint8_t *)string,strlen(string),100);
+	if(time)
+	{
+		BlueTooth_W_EN(hc_05,0);
+	}
+	osDelay(50);
+	return hc_05_unpack_fifo_data();
 }
 
-void hc_05_unpack_fifo_data(void)
+HAL_StatusTypeDef hc_05_unpack_fifo_data(void)
 {
   static uint8_t clear_flag=1;
   uint8_t byte = 0;
@@ -88,6 +91,8 @@ void hc_05_unpack_fifo_data(void)
 				{
 					memcpy(&(HC_05.state.info[strlen((const char *)HC_05.state.info)]),p_obj->protocol_packet, p_obj->index);
 					clear_flag=1;
+					if(p_obj->protocol_packet[0]=='O'&&p_obj->protocol_packet[1]=='K')return HAL_OK;
+					else return HAL_ERROR;
 				}
 				else if(p_obj->protocol_packet[0]=='+')
 				{
@@ -96,7 +101,12 @@ void hc_05_unpack_fifo_data(void)
 					HC_05.state.info[p_obj->index-1]=',';
 					clear_flag=0;
 				}
-				else memcpy(HC_05.state.info,p_obj->protocol_packet , p_obj->index);
+				else
+				{
+					memcpy(HC_05.state.info,p_obj->protocol_packet , p_obj->index);
+					if(p_obj->protocol_packet[0]=='O'&&p_obj->protocol_packet[1]=='K')return HAL_OK;
+					else return HAL_ERROR;
+				}
 				pre_byte = 0xff;
 				p_obj->unpack_step = STEP_TAIL_SOF;
 				p_obj->index = 0;
@@ -117,18 +127,78 @@ void hc_05_unpack_fifo_data(void)
       }break;
     }
   }
+  return HAL_ERROR;
 }
 
-void bluetooth_usart_task(void *argument)
+LINK_StatusTypeDef HC_05_link(HC05_HandleTypeDef *hc_05)
 {
-	BlueTooth_Init(&HC_05);
-	BlueTooth_Command(&HC_05,(uint8_t *)"AT+ROLE=5\r\n",11,0);
-
-    while(1)
+  LINK_StatusTypeDef result=HC_05_ERROR;
+  if(BlueTooth_R_STATE(&HC_05))
+  {
+	hc_05_link.retry_count=0;
+	hc_05_link.retry_max=2;
+	hc_05_link.link_step=STEP_AVAILABLE;
+	while(hc_05_link.retry_count < hc_05_link.retry_max)
     {
-        hc_05_unpack_fifo_data();
-        osDelay(10); 
-    }
+		hc_05_link.retry_count++;
+		if(hc_05_link.link_step==STEP_AVAILABLE)
+		{
+			if(BlueTooth_Command(hc_05,"AT\r\n", 0)==HAL_OK)
+			{
+				hc_05_link.link_step=STEP_LINK;
+			}
+			else
+			{
+				result=HC_05_NOAT;
+				osDelay(100);
+				continue;
+			}
+		}
+		if(hc_05_link.link_step==STEP_LINK)
+		{
+			if(BlueTooth_Command(hc_05,"AT+LINK=0425,03,0709D5\r\n", 0)==HAL_OK)
+			{
+				osDelay(8000);
+				hc_05_link.link_step=STEP_CHECK;
+			}
+			else
+			{
+				result=HC_05_NOLINK;
+				osDelay(100);
+				continue;
+			}
+		}
+		if(hc_05_link.link_step==STEP_CHECK)
+		{
+			if(BlueTooth_R_STATE(hc_05)==0)
+			{
+				hc_05_link.link_step=STEP_AVAILABLE;
+				result=HC_05_OK;
+				break;
+			}
+			else
+			{
+				result=HC_05_NOCHECK;
+				osDelay(100);
+				continue;
+			}
+		}
+	}
+  }
+  else
+  {
+	BlueTooth_Command(hc_05,"AT+DISC\r\n", 1);
+	osDelay(2000);
+	if(BlueTooth_R_STATE(hc_05))
+	{
+		result=HC_05_OK;
+	}
+	else
+	{
+		result=HC_05_NODISC;
+	}
+  }
+  return result;
 }
 /*
 void BlueTooth_Task(void *p)
